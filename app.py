@@ -144,7 +144,8 @@ html, body, [class*="css"] {
 # ─────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
 def load_whisper():
-    return whisper.load_model("tiny")
+    # Usando o modelo 'base' (74M params) para maior precisão de idioma e transcrição
+    return whisper.load_model("base")
 
 @st.cache_resource(show_spinner=False)
 def load_translation_model(model_name: str):
@@ -216,17 +217,38 @@ st.markdown('<h1 class="hero-title">🎙️ Tradutor de Voz IA</h1>', unsafe_all
 st.markdown('<p class="hero-subtitle">Grave sua voz • Transcreva • Traduza • Ouça</p>', unsafe_allow_html=True)
 st.markdown('<div class="separator"></div>', unsafe_allow_html=True)
 
-# ── Passo 1: Gravação ──────────────────────────
-st.markdown('<div class="step-indicator">① GRAVE SUA VOZ</div>', unsafe_allow_html=True)
+# ── Passo 1: Entrada ──────────────────────────
+st.markdown('<div class="step-indicator">① SEU IDIOMA E GRAVAÇÃO</div>', unsafe_allow_html=True)
 
-audio_input = st.audio_input(
-    label="Clique para gravar",
-    key="audio_recorder",
-)
+# Layout em colunas para selecionar o idioma de entrada e gravar
+col_lang_in, col_audio = st.columns([1, 2])
+
+with col_lang_in:
+    idioma_entrada_label = st.selectbox(
+        label="Você vai falar em:",
+        options=["Auto-detectar", "🇪🇸 Español", "🇧🇷 Português (Brasil)", "🇬🇧 Inglês"],
+        index=0,
+        key="idioma_entrada",
+    )
+    
+IDIOMAS_ENTRADA_MAP = {
+    "Auto-detectar": None,
+    "🇪🇸 Español": "es",
+    "🇧🇷 Português (Brasil)": "pt",
+    "🇬🇧 Inglês": "en"
+}
+idioma_entrada_code = IDIOMAS_ENTRADA_MAP[idioma_entrada_label]
+
+with col_audio:
+    audio_input = st.audio_input(
+        label="Grave sua voz",
+        key="audio_recorder",
+        label_visibility="collapsed"
+    )
 
 # ── Passo 2: Idioma Destino ────────────────────
 st.markdown('<br>', unsafe_allow_html=True)
-st.markdown('<div class="step-indicator">② ESCOLHA O IDIOMA DE DESTINO</div>', unsafe_allow_html=True)
+st.markdown('<div class="step-indicator">② IDIOMA DE DESTINO (TRADUÇÃO)</div>', unsafe_allow_html=True)
 
 idioma_label = st.selectbox(
     label="Traduzir para:",
@@ -255,9 +277,15 @@ if btn_processar:
             # Transcrição
             with st.spinner("🤖 Carregando Whisper e transcrevendo..."):
                 whisper_model = load_whisper()
-                result = whisper_model.transcribe(tmp_path)
+                
+                # Configura argumentos de transcrição (força idioma se selecionado)
+                transcribe_args = {}
+                if idioma_entrada_code is not None:
+                    transcribe_args["language"] = idioma_entrada_code
+                
+                result = whisper_model.transcribe(tmp_path, **transcribe_args)
                 texto_original = result["text"].strip()
-                idioma_detectado = result["language"]
+                idioma_detectado = result.get("language", idioma_entrada_code)
 
             # Exibe transcrição
             st.markdown(

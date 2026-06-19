@@ -10,8 +10,9 @@ import os
 import streamlit as st
 import whisper
 from gtts import gTTS
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
+import requests
+import json
 
 # ─────────────────────────────────────────────
 # Configuração da Página
@@ -147,15 +148,8 @@ def load_whisper():
     # Usando o modelo 'base' (74M params) para maior precisão de idioma e transcrição
     return whisper.load_model("base")
 
-@st.cache_resource(show_spinner=False)
-def load_translation_model(model_name: str):
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-    model.eval()
-    return tokenizer, model
-
 # ─────────────────────────────────────────────
-# Mapa de idiomas e modelos de tradução
+# Configuração OpenRouter e Idiomas
 # ─────────────────────────────────────────────
 IDIOMAS = {
     "🇬🇧 Inglês": "en",
@@ -163,41 +157,106 @@ IDIOMAS = {
     "🇧🇷 Português (Brasil)": "pt",
 }
 
-# Modelos diretos Helsinki-NLP (identificadores verificados no HuggingFace)
-MODELOS_DIRECTOS = {
-    ("es", "en"): "Helsinki-NLP/opus-mt-es-en",
-    ("en", "es"): "Helsinki-NLP/opus-mt-en-es",
-    ("pt", "en"): "Helsinki-NLP/opus-mt-pt-en",
-    ("en", "pt"): "Helsinki-NLP/opus-mt-tc-big-en-pt",  # único modelo en→pt válido no HF
-}
-
-# Nomes amigáveis para idiomas de exibição
 LANG_NAMES = {"es": "Español", "en": "English", "pt": "Português"}
 
+# Modelos gratuitos do OpenRouter para redundância
+OPENROUTER_MODELS = [
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "google/gemma-2-9b-it:free",
+    "qwen/qwen-2-7b-instruct:free",
+    "openrouter/free"
+]
+
 # ─────────────────────────────────────────────
-# Função de Tradução
+# Função de Tradução (OpenRouter com Fallback)
 # ─────────────────────────────────────────────
 def traduzir(texto: str, origem: str, destino: str) -> str:
-    """Traduz texto usando Helsinki-NLP. Usa inglês como pivot se não há modelo direto."""
+    """Traduz texto usando a API do OpenRouter com fallback automático entre modelos gratuitos."""
     if origem == destino:
         return texto
 
-    pair = (origem, destino)
+    # Verificar API key
+    if "openrouter" not in st.secrets or "api_key" not in st.secrets["openrouter"]:
+        raise Exception(
+            "A API Key do OpenRouter não está configurada! "
+            "Configure-a em .streamlit/secrets.toml localmente ou no painel de Secrets del Streamlit Cloud."
+        )
+    
+    api_key = st.secrets["openrouter"]["api_key"]
+    if not api_key or api_key == "sk-or-v1-SeuTokenAqui" or api_key.strip() == "":
+        raise Exception(
+            "A API Key do OpenRouter fornecida é inválida ou vazia! "
+            "Insira uma chave real em .streamlit/secrets.toml ou no painel de Secrets del Streamlit Cloud."
+        )
 
-    # Tradução direta
-    if pair in MODELOS_DIRECTOS:
-        model_name = MODELOS_DIRECTOS[pair]
-        tokenizer, model = load_translation_model(model_name)
-        inputs = tokenizer(texto, return_tensors="pt", padding=True, truncation=True, max_length=512)
-        with torch.no_grad():
-            outputs = model.generate(**inputs, max_length=512)
-        result = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        # Se foi pt→es (passou por inglês internamente no modelo ROMANCE), está ok
-        return result
+    lang_names_full = {
+        "es": "Español",
+        "en": "English",
+        "pt": "Português do Brasil (Brazilian Portuguese)"
+    }
 
-    # Tradução via pivô inglês: X → en → Y
-    intermediate = traduzir(texto, origem, "en")
-    return traduzir(intermediate, "en", destino)
+    origin_lang = lang_names_full.get(origem, origem)
+    target_lang = lang_names_full.get(destino, destino)
+
+    errors = []
+    for model_name in OPENROUTER_MODELS:
+        try:
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/Reynamada/Mini-Traductor-ES-ING-PORT-",
+                "X-Title": "Mini Tradutor de Voz IA"
+            }
+            
+            payload = {
+                "model": model_name,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a professional translator. Translate the text from the source language "
+                            "to the target language. Preserve formatting, meaning, and tone. "
+                            "If the target language is Portuguese, you MUST translate to natural Brazilian Portuguese (Português do Brasil). "
+                            "Do NOT add any notes, introductions, explanations, or markdown code blocks around the text. "
+                            "Output ONLY the raw translation."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Source Language: {origin_lang}\nTarget Language: {target_lang}\nText:\n{texto}"
+                    }
+                ],
+                "temperature": 0.3
+            }
+            
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                data=json.dumps(payload),
+                timeout=12
+            )
+            
+            if response.status_code == 200:
+                result_json = response.json()
+                if "choices" in result_json and len(result_json["choices"]) > 0:
+                    translation = result_json["choices"][0]["message"]["content"].strip()
+                    # Remover aspas extras que os modelos às vezes colocam
+                    if translation.startswith('"') and translation.endswith('"'):
+                        translation = translation[1:-1].strip()
+                    if translation.startswith("'") and translation.endswith("'"):
+                        translation = translation[1:-1].strip()
+                    return translation
+                else:
+                    errors.append(f"{model_name}: Resposta vazia da API")
+            else:
+                errors.append(f"{model_name}: HTTP {response.status_code} - {response.text}")
+        except Exception as e:
+            errors.append(f"{model_name}: {str(e)}")
+
+    raise Exception(
+        f"Todos os modelos gratuitos de OpenRouter falharam ao tentar traduzir. Erros detalhados:\n" + 
+        "\n".join(f"- {err}" for err in errors)
+    )
 
 
 def gerar_audio(texto: str, lang: str) -> bytes:
@@ -216,6 +275,27 @@ def gerar_audio(texto: str, lang: str) -> bytes:
 st.markdown('<h1 class="hero-title">🎙️ Tradutor de Voz IA</h1>', unsafe_allow_html=True)
 st.markdown('<p class="hero-subtitle">Grave sua voz • Transcreva • Traduza • Ouça</p>', unsafe_allow_html=True)
 st.markdown('<div class="separator"></div>', unsafe_allow_html=True)
+
+# ── Verificação de API Key de OpenRouter ──────
+has_key = False
+if "openrouter" in st.secrets and "api_key" in st.secrets["openrouter"]:
+    key = st.secrets["openrouter"]["api_key"]
+    if key and key != "sk-or-v1-SeuTokenAqui" and key.strip() != "":
+        has_key = True
+
+if not has_key:
+    st.warning(
+        "⚠️ **Chave API do OpenRouter não configurada!**\n\n"
+        "Para realizar as traduções, você precisa de uma API Key do OpenRouter. "
+        "Siga estes passos:\n"
+        "1. Obtenha uma chave gratuita em [OpenRouter Keys](https://openrouter.ai/keys).\n"
+        "2. **Localmente**: Adicione a chave no arquivo `.streamlit/secrets.toml`:\n"
+        "```toml\n"
+        "[openrouter]\n"
+        "api_key = \"sua-chave-aqui\"\n"
+        "```\n"
+        "3. **Streamlit Cloud**: Adicione no painel da aplicação em **App Settings** ➔ **Secrets**."
+    )
 
 # ── Passo 1: Entrada ──────────────────────────
 st.markdown('<div class="step-indicator">① SEU IDIOMA E GRAVAÇÃO</div>', unsafe_allow_html=True)

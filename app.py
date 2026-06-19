@@ -13,6 +13,10 @@ from gtts import gTTS
 import torch
 import requests
 import json
+import threading
+
+# Lock global para garantir segurança de threads na transcrição com Whisper
+whisper_lock = threading.Lock()
 
 # ─────────────────────────────────────────────
 # Configuração da Página
@@ -363,7 +367,9 @@ if btn_processar:
                 if idioma_entrada_code is not None:
                     transcribe_args["language"] = idioma_entrada_code
                 
-                result = whisper_model.transcribe(tmp_path, **transcribe_args)
+                # Usar um lock para evitar concorrência no Whisper
+                with whisper_lock:
+                    result = whisper_model.transcribe(tmp_path, **transcribe_args)
                 texto_original = result["text"].strip()
                 idioma_detectado = result.get("language", idioma_entrada_code)
 

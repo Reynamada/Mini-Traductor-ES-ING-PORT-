@@ -1,13 +1,24 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# ⚠️ Segredos — NUNCA commitar!
 .env
+.streamlit/secrets.toml
+
+# Ambientes virtuais
 .venv/
 venv/
+
+# Build
 *.egg-info/
 dist/
 build/
 .DS_Store
+
+# Arquivos de áudio gerados
 *.wav
 *.mp3
+
+# Jupyter
 *.ipynb_checkpoints/

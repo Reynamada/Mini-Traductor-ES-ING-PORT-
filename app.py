@@ -14,6 +14,7 @@ import torch
 import requests
 import json
 import threading
+import re
 
 # Lock global para garantir segurança de threads na transcrição com Whisper
 whisper_lock = threading.Lock()
@@ -151,6 +152,15 @@ html, body, [class*="css"] {
 def load_whisper():
     # Usando o modelo 'base' (74M params) para maior precisão de idioma e transcrição
     return whisper.load_model("base")
+
+
+def limpar_transcricao(texto: str) -> str:
+    """Remove tokens especiais do Whisper que podem vazar no texto (ex: <|tr|>, <|es|>, <|en|>, etc.)."""
+    # Remove qualquer token entre <| e |> que Whisper usa internamente
+    texto = re.sub(r'<\|[^|>]+\|>', '', texto)
+    # Remove espaços extras resultantes da remoção de tokens
+    texto = re.sub(r'\s+', ' ', texto).strip()
+    return texto
 
 # ─────────────────────────────────────────────
 # Configuração OpenRouter e Idiomas
@@ -369,8 +379,14 @@ if btn_processar:
                 
                 # Usar um lock para evitar concorrência no Whisper
                 with whisper_lock:
-                    result = whisper_model.transcribe(tmp_path, **transcribe_args)
-                texto_original = result["text"].strip()
+                    result = whisper_model.transcribe(
+                        tmp_path,
+                        fp16=False,          # Evita erros em CPU e tokens especiais com FP16
+                        beam_size=5,         # Busca mais ampla = transcrição mais precisa
+                        temperature=0.0,     # Determinístico: sem aleatoriedade
+                        **transcribe_args
+                    )
+                texto_original = limpar_transcricao(result["text"])
                 idioma_detectado = result.get("language", idioma_entrada_code)
 
             # Exibe transcrição

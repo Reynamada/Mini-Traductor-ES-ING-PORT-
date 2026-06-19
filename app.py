@@ -166,10 +166,8 @@ IDIOMAS = {
 MODELOS_DIRECTOS = {
     ("es", "en"): "Helsinki-NLP/opus-mt-es-en",
     ("en", "es"): "Helsinki-NLP/opus-mt-en-es",
-    ("pt", "en"): "Helsinki-NLP/opus-mt-ROMANCE-en",
-    ("en", "pt"): "Helsinki-NLP/opus-mt-en-ROMANCE",
-    ("es", "pt"): "Helsinki-NLP/opus-mt-es-ROMANCE",
-    ("pt", "es"): "Helsinki-NLP/opus-mt-ROMANCE-en",  # pt→en→es via dois passos
+    ("pt", "en"): "Helsinki-NLP/opus-mt-pt-en",
+    ("en", "pt"): "Helsinki-NLP/opus-mt-en-pt",
 }
 
 # Nomes amigáveis para idiomas de exibição

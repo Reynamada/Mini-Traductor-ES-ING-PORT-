@@ -163,12 +163,12 @@ IDIOMAS = {
     "🇧🇷 Português (Brasil)": "pt",
 }
 
-# Modelos diretos Helsinki-NLP
+# Modelos diretos Helsinki-NLP (identificadores verificados no HuggingFace)
 MODELOS_DIRECTOS = {
     ("es", "en"): "Helsinki-NLP/opus-mt-es-en",
     ("en", "es"): "Helsinki-NLP/opus-mt-en-es",
     ("pt", "en"): "Helsinki-NLP/opus-mt-pt-en",
-    ("en", "pt"): "Helsinki-NLP/opus-mt-en-pt",
+    ("en", "pt"): "Helsinki-NLP/opus-mt-tc-big-en-pt",  # único modelo en→pt válido no HF
 }
 
 # Nomes amigáveis para idiomas de exibição

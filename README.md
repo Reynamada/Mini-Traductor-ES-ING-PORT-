@@ -26,6 +26,7 @@ streamlit run app.py
 3. Conecte sua conta GitHub
 4. Selecione este repositório e `app.py` como ponto de entrada
 5. Clique em **Deploy!**
+   Deploy app: [(https://minitraductorqueen.streamlit.app/)]
 
 ## 🧠 Modelos Utilizados
 
